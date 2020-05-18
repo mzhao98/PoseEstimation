@@ -1,0 +1,584 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Import dependencies"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from __future__ import print_function\n",
+    "import numpy as np\n",
+    "import torch\n",
+    "import torchvision.datasets as datasets\n",
+    "import torchvision\n",
+    "import matplotlib.pyplot as plt\n",
+    "from sklearn.manifold import TSNE\n",
+    "import seaborn as sns\n",
+    "import matplotlib.patheffects as path_effects\n",
+    "import argparse\n",
+    "import torch.nn as nn\n",
+    "import torch.nn.functional as F\n",
+    "import torch.optim as optim\n",
+    "from torchvision import datasets, transforms\n",
+    "from torch.optim.lr_scheduler import StepLR\n",
+    "from torch.utils.data.sampler import SubsetRandomSampler\n",
+    "import os\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Download MNIST"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "mnist_dataset = datasets.MNIST(root='./data', train=True, \n",
+    "                               transform=None, target_transform=None, download=True)\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Load in MNIST"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "train_dataset = datasets.MNIST(root='./data', train=True, \n",
+    "                               transform=None, target_transform=None, download=False)\n",
+    "test_dataset = datasets.MNIST(root='./data', train=False, \n",
+    "                               transform=None, target_transform=None, download=False)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "train_all_loader = torch.utils.data.DataLoader(\n",
+    "    train_dataset, batch_size=batch_size\n",
+    ")\n",
+    "\n",
+    "test_loader = torch.utils.data.DataLoader(\n",
+    "    train_dataset, batch_size=batch_size\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Partition MNIST"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "class_counts = {}\n",
+    "for i in range(10):\n",
+    "    class_counts[i] = []\n",
+    "\n",
+    "for batch_idx, (data, target) in enumerate(train_dataset):\n",
+    "    class_counts[int(target)].append(batch_idx)\n",
+    "    \n",
+    "subset_indices_train = np.array([], dtype='int8')\n",
+    "subset_indices_valid = np.array([], dtype='int8')\n",
+    "\n",
+    "np.random.seed(0)\n",
+    "for c in class_counts:\n",
+    "    t_size = int(len(class_counts[c])*0.85)\n",
+    "    t = np.random.choice(class_counts[c], size=t_size)\n",
+    "    v = []\n",
+    "    for i in range(len(class_counts[c])):\n",
+    "        if i not in t:\n",
+    "            v.append(int(i))\n",
+    "    \n",
+    "    subset_indices_train = np.concatenate((subset_indices_train, t), axis=None)\n",
+    "    subset_indices_valid = np.concatenate((subset_indices_valid, v), axis=None)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "train_dataset = datasets.MNIST('./data', train=True, download=False,\n",
+    "            transform=transforms.Compose([       # Data preprocessing\n",
+    "                transforms.ToTensor(),           # Add data augmentation here\n",
+    "                transforms.Normalize((0.1307,), (0.3081,))\n",
+    "            ]))\n",
+    "\n",
+    "train_loader = torch.utils.data.DataLoader(\n",
+    "    train_dataset, batch_size=batch_size,\n",
+    "    sampler=SubsetRandomSampler(subset_indices_train)\n",
+    ")\n",
+    "val_loader = torch.utils.data.DataLoader(\n",
+    "    train_dataset, batch_size=batch_size,\n",
+    "    sampler=SubsetRandomSampler(subset_indices_valid)\n",
+    ")\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Set up ConvNet"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "\n",
+    "\n",
+    "class ConvNet(nn.Module):\n",
+    "    '''\n",
+    "    Design your model with convolutional layers.\n",
+    "    '''\n",
+    "    def __init__(self):\n",
+    "        super(ConvNet, self).__init__()\n",
+    "        self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=(3,3), stride=1)\n",
+    "        self.conv2 = nn.Conv2d(8, 8, 3, 1)\n",
+    "        self.dropout1 = nn.Dropout2d(0.5)\n",
+    "        self.dropout2 = nn.Dropout2d(0.5)\n",
+    "        self.fc1 = nn.Linear(200, 64)\n",
+    "        self.fc2 = nn.Linear(64, 10)\n",
+    "\n",
+    "    def forward(self, x):\n",
+    "        x = self.conv1(x)\n",
+    "        x = F.relu(x)\n",
+    "        x = F.max_pool2d(x, 2)\n",
+    "        x = self.dropout1(x)\n",
+    "\n",
+    "        x = self.conv2(x)\n",
+    "        x = F.relu(x)\n",
+    "        x = F.max_pool2d(x, 2)\n",
+    "        x = self.dropout2(x)\n",
+    "\n",
+    "        x = torch.flatten(x, 1)\n",
+    "        x = self.fc1(x)\n",
+    "        x = F.relu(x)\n",
+    "        x = self.fc2(x)\n",
+    "\n",
+    "        output = F.log_softmax(x, dim=1)\n",
+    "        return output"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "\n",
+    "def train(model,train_loader, optimizer, epoch, log_interval):\n",
+    "    '''\n",
+    "    This is your training function. When you call this function, the model is\n",
+    "    trained for 1 epoch.\n",
+    "    '''\n",
+    "    model.train()   # Set the model to training mode\n",
+    "    total_loss = 0\n",
+    "\n",
+    "    for batch_idx, (data, target) in enumerate(train_loader):\n",
+    "        data, target = data, target\n",
+    "        optimizer.zero_grad()               # Clear the gradient\n",
+    "        output = model(data)                # Make predictions\n",
+    "        loss = F.nll_loss(output, target)   # Compute loss\n",
+    "        loss.backward()                     # Gradient computation\n",
+    "        optimizer.step()                    # Perform a single optimization step\n",
+    "        if batch_idx % log_interval == 0:\n",
+    "            print('Train Epoch: {} [{}/{} ({:.0f}%)]\\tLoss: {:.6f}'.format(\n",
+    "                epoch, batch_idx * len(data), len(train_loader.dataset),\n",
+    "                100. * batch_idx / len(train_loader), loss.item()))\n",
+    "        total_loss += loss.item()\n",
+    "    return total_loss\n",
+    "\n",
+    "\n",
+    "def test(model, test_loader, subset_indices_valid):\n",
+    "    model.eval()    # Set the model to inference mode\n",
+    "    test_loss = 0\n",
+    "    correct = 0\n",
+    "    with torch.no_grad():   # For the inference step, gradient is not computed\n",
+    "        for data, target in test_loader:\n",
+    "            data, target = data, target\n",
+    "            output = model(data)\n",
+    "            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss\n",
+    "            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability\n",
+    "            correct += pred.eq(target.view_as(pred)).sum().item()\n",
+    "\n",
+    "\n",
+    "    test_loss /= len(test_loader.dataset)\n",
+    "    \n",
+    "    total = len(test_loader.dataset)\n",
+    "\n",
+    "    print('\\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\\n'.format(\n",
+    "        test_loss, correct, total,\n",
+    "        100. * correct / total))\n",
+    "    \n",
+    "    return test_loss, correct, total\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Set training parameters"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "batch_size = 32\n",
+    "\n",
+    "epochs = 20\n",
+    "step = 1\n",
+    "\n",
+    "test_batch_size = 1000\n",
+    "lr = 1.0\n",
+    "gamma=0.7\n",
+    "no_cuda = False\n",
+    "seed = 1\n",
+    "log_interval = 10\n",
+    "evaluate = False\n",
+    "save_model = True\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Load your model [fcNet, ConvNet, Net]\n",
+    "basic_model = ConvNet()\n",
+    "\n",
+    "# Try different optimzers here [Adam, SGD, RMSprop]\n",
+    "optimizer = optim.Adadelta(basic_model.parameters(), lr=lr)\n",
+    "\n",
+    "# Set your learning rate scheduler\n",
+    "scheduler = StepLR(optimizer, step_size=step, gamma=gamma)\n",
+    "\n",
+    "# Training loop\n",
+    "basic_training_losses_over_epochs = []\n",
+    "basic_test_losses_over_epochs = []\n",
+    "for epoch in range(1, epochs + 1):\n",
+    "    loss_ep = train(basic_model, train_loader, optimizer, epoch, log_interval)\n",
+    "    \n",
+    "    test_loss, correct_test_count, total_test_count = test(basic_model, val_loader, subset_indices_valid) \n",
+    "    \n",
+    "    basic_training_losses_over_epochs.append(loss_ep)\n",
+    "    basic_test_losses_over_epochs.append(test_loss)\n",
+    "    \n",
+    "    scheduler.step()    # learning rate scheduler\n",
+    "\n",
+    "    # You may optionally save your model at each epoch here\n",
+    "\n",
+    "if save_model:\n",
+    "    torch.save(basic_model.state_dict(), \"mnist_model2.pt\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Test and visualize results"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "test(basic_model, train_loader, subset_indices_valid) \n",
+    "test(basic_model, test_loader, subset_indices_valid) "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "x = list(range(1, epochs + 1))\n",
+    "y = basic_training_losses_over_epochs\n",
+    "plt.plot(x, y)\n",
+    "plt.scatter(x, y)\n",
+    "plt.title(\"ConvNet: Training Loss over Epoch\")\n",
+    "plt.xlabel(\"Epoch\")\n",
+    "plt.ylabel(\"Training Loss\")\n",
+    "plt.show()\n",
+    "\n",
+    "x = list(range(1, epochs + 1))\n",
+    "y = basic_test_losses_over_epochs\n",
+    "plt.plot(x, y)\n",
+    "plt.scatter(x, y)\n",
+    "plt.title(\"ConvNet: Test Loss over Epoch\")\n",
+    "plt.xlabel(\"Epoch\")\n",
+    "plt.ylabel(\"Test Loss\")\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Add Data Augmentation Scheme"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Augment data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "gaussian_kernel = np.load('gaussian-kernel.npy')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def pad_with(vector, pad_width, iaxis, kwargs):\n",
+    "    pad_value = kwargs.get('padder', 0)\n",
+    "    vector[:pad_width[0]] = pad_value\n",
+    "    vector[-pad_width[1]:] = pad_value"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def convolution(img, kernel):\n",
+    "    MAX_ROWS = img.shape[0]\n",
+    "    MAX_COLS = img.shape[1]\n",
+    "    kernel_size = kernel.shape[0]\n",
+    "    pad_amount = int(kernel_size/2)\n",
+    "    gaussian_convolved_img = np.zeros(img.shape)\n",
+    "    zero_padded = np.pad(img[0, :,:], pad_amount, pad_with, padder=0)\n",
+    "    for r in range(pad_amount, MAX_ROWS+pad_amount):\n",
+    "        for c in range(pad_amount, MAX_COLS+pad_amount):\n",
+    "#             print(\"r-pad_amount\", r-pad_amount)\n",
+    "#             print(\"r-pad_amount+kernel_size\", r-pad_amount+kernel_size)\n",
+    "            conv = np.multiply(zero_padded[r-pad_amount:r-pad_amount+kernel_size, c-pad_amount:c-pad_amount+kernel_size],kernel)\n",
+    "            conv = np.sum(conv)\n",
+    "            gaussian_convolved_img[0, r-pad_amount, c-pad_amount] = (conv)\n",
+    "    return gaussian_convolved_img"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "augmented_train_dataset = datasets.MNIST('./data', train=True, download=False,\n",
+    "            transform=transforms.Compose([       # Data preprocessing\n",
+    "                transforms.ToTensor(),           # Add data augmentation here\n",
+    "                transforms.Normalize((0.1307,), (0.3081,))\n",
+    "            ]))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "for batch_idx, (data, target) in enumerate(train_loader):\n",
+    "    new_data = []\n",
+    "    new_target = []\n",
+    "    data, target = data, target\n",
+    "    for i in range(len(data)):\n",
+    "        input_x = data[i]\n",
+    "        gaussian_input = convolution(input_x, gaussian_kernel)\n",
+    "        gaussian_input = torch.FloatTensor(gaussian_input)\n",
+    "        new_data.append(input_x)\n",
+    "        new_data.append(gaussian_input)\n",
+    "        new_target.append(target[i])\n",
+    "        new_target.append(target[i])\n",
+    "    \n",
+    "    data = torch.stack(new_data, 0) \n",
+    "    target = torch.tensor(new_target)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Train ConvNet on Augmented Data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def augmented_train(model,train_loader, optimizer, epoch, log_interval):\n",
+    "    '''\n",
+    "    This is your training function. When you call this function, the model is\n",
+    "    trained for 1 epoch.\n",
+    "    '''\n",
+    "    total_loss = 0\n",
+    "    model.train()   # Set the model to training mode\n",
+    "    for batch_idx, (data, target) in enumerate(train_loader):\n",
+    "        new_data = []\n",
+    "        new_target = []\n",
+    "        data, target = data, target\n",
+    "        for i in range(len(data)):\n",
+    "            input_x = data[i]\n",
+    "            gaussian_input = convolution(input_x, box_kernel)\n",
+    "            gaussian_input = torch.FloatTensor(gaussian_input)\n",
+    "            new_data.append(input_x)\n",
+    "            new_data.append(gaussian_input)\n",
+    "            new_target.append(target[i])\n",
+    "            new_target.append(target[i])\n",
+    "\n",
+    "        data = torch.stack(new_data, 0) \n",
+    "        target = torch.tensor(new_target)\n",
+    "    \n",
+    "        optimizer.zero_grad()               # Clear the gradient\n",
+    "        output = model(data)                # Make predictions\n",
+    "        loss = F.nll_loss(output, target)   # Compute loss\n",
+    "        loss.backward()                     # Gradient computation\n",
+    "        optimizer.step()                    # Perform a single optimization step\n",
+    "        if batch_idx % log_interval == 0:\n",
+    "            print('Train Epoch: {} [{}/{} ({:.0f}%)]\\tLoss: {:.6f}'.format(\n",
+    "                epoch, batch_idx * len(data), len(train_loader.dataset),\n",
+    "                100. * batch_idx / len(train_loader), loss.item()))\n",
+    "        total_loss += loss.item()\n",
+    "    return total_loss"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Load your model [fcNet, ConvNet, Net]\n",
+    "aug_basic_model = ConvNet()\n",
+    "\n",
+    "# Try different optimzers here [Adam, SGD, RMSprop]\n",
+    "optimizer = optim.Adadelta(aug_basic_model.parameters(), lr=lr)\n",
+    "\n",
+    "# Set your learning rate scheduler\n",
+    "scheduler = StepLR(optimizer, step_size=step, gamma=gamma)\n",
+    "augmented_basic_training_losses_over_epochs = []\n",
+    "augmented_basic_test_losses_over_epochs = []\n",
+    "# Training loop\n",
+    "for epoch in range(1, epochs + 1):\n",
+    "    loss_ep = train(aug_basic_model, train_loader, optimizer, epoch, log_interval)\n",
+    "    test_loss, _, _ = test(aug_basic_model, val_loader, subset_indices_valid) \n",
+    "    \n",
+    "    augmented_basic_training_losses_over_epochs.append(loss_ep)\n",
+    "    augmented_basic_test_losses_over_epochs.append(test_loss)\n",
+    "    \n",
+    "    \n",
+    "    scheduler.step()    # learning rate scheduler\n",
+    "\n",
+    "    # You may optionally save your model at each epoch here\n",
+    "\n",
+    "if save_model:\n",
+    "    torch.save(aug_basic_model.state_dict(), \"mnist_model2_aug2.pt\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Visualize and test results"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "test(aug_basic_model, train_loader, subset_indices_valid) \n",
+    "test(aug_basic_model, test_loader, subset_indices_valid) \n",
+    "\n",
+    "x = list(range(1, epochs + 1))\n",
+    "y = augmented_basic_training_losses_over_epochs\n",
+    "plt.plot(x, y)\n",
+    "plt.scatter(x, y)\n",
+    "plt.title(\"Augmented ConvNet: Training Loss over Epoch\")\n",
+    "plt.xlabel(\"Epoch\")\n",
+    "plt.ylabel(\"Training Loss\")\n",
+    "plt.show()\n",
+    "\n",
+    "x = list(range(1, epochs + 1))\n",
+    "y = augmented_basic_test_losses_over_epochs\n",
+    "plt.plot(x, y)\n",
+    "plt.scatter(x, y)\n",
+    "plt.title(\"Augmented ConvNet: Test Loss over Epoch\")\n",
+    "plt.xlabel(\"Epoch\")\n",
+    "plt.ylabel(\"Test Loss\")\n",
+    "plt.show()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.7"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

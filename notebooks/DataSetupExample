@@ -1,0 +1,177 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Import dependencies"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from __future__ import print_function\n",
+    "import numpy as np\n",
+    "import torch\n",
+    "import torchvision.datasets as datasets\n",
+    "import torchvision\n",
+    "import matplotlib.pyplot as plt\n",
+    "from sklearn.manifold import TSNE\n",
+    "import seaborn as sns\n",
+    "import matplotlib.patheffects as path_effects\n",
+    "import argparse\n",
+    "import torch.nn as nn\n",
+    "import torch.nn.functional as F\n",
+    "import torch.optim as optim\n",
+    "from torchvision import datasets, transforms\n",
+    "from torch.optim.lr_scheduler import StepLR\n",
+    "from torch.utils.data.sampler import SubsetRandomSampler\n",
+    "import os\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Download MNIST"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "TypeError",
+     "evalue": "__init__() missing 2 required positional arguments: 'annotation_path' and 'frames_per_clip'",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mTypeError\u001b[0m                                 Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-5-ef3189051404>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[0;32m----> 1\u001b[0;31m \u001b[0mmnist_dataset\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mdatasets\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mUCF101\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mroot\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;34m'./data'\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mtrain\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;32mTrue\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mtransform\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;32mNone\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;31mTypeError\u001b[0m: __init__() missing 2 required positional arguments: 'annotation_path' and 'frames_per_clip'"
+     ]
+    }
+   ],
+   "source": [
+    "mnist_dataset = datasets.UCF101(root='./data', train=True, transform=None)\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Load in MNIST"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "train_dataset = datasets.MNIST(root='./data', train=True, \n",
+    "                               transform=None, target_transform=None, download=False)\n",
+    "test_dataset = datasets.MNIST(root='./data', train=False, \n",
+    "                               transform=None, target_transform=None, download=False)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "train_all_loader = torch.utils.data.DataLoader(\n",
+    "    train_dataset, batch_size=batch_size\n",
+    ")\n",
+    "\n",
+    "test_loader = torch.utils.data.DataLoader(\n",
+    "    train_dataset, batch_size=batch_size\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Partition MNIST"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "class_counts = {}\n",
+    "for i in range(10):\n",
+    "    class_counts[i] = []\n",
+    "\n",
+    "for batch_idx, (data, target) in enumerate(train_dataset):\n",
+    "    class_counts[int(target)].append(batch_idx)\n",
+    "    \n",
+    "subset_indices_train = np.array([], dtype='int8')\n",
+    "subset_indices_valid = np.array([], dtype='int8')\n",
+    "\n",
+    "np.random.seed(0)\n",
+    "for c in class_counts:\n",
+    "    t_size = int(len(class_counts[c])*0.85)\n",
+    "    t = np.random.choice(class_counts[c], size=t_size)\n",
+    "    v = []\n",
+    "    for i in range(len(class_counts[c])):\n",
+    "        if i not in t:\n",
+    "            v.append(int(i))\n",
+    "    \n",
+    "    subset_indices_train = np.concatenate((subset_indices_train, t), axis=None)\n",
+    "    subset_indices_valid = np.concatenate((subset_indices_valid, v), axis=None)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "train_dataset = datasets.MNIST('./data', train=True, download=False,\n",
+    "            transform=transforms.Compose([       # Data preprocessing\n",
+    "                transforms.ToTensor(),           # Add data augmentation here\n",
+    "                transforms.Normalize((0.1307,), (0.3081,))\n",
+    "            ]))\n",
+    "\n",
+    "train_loader = torch.utils.data.DataLoader(\n",
+    "    train_dataset, batch_size=batch_size,\n",
+    "    sampler=SubsetRandomSampler(subset_indices_train)\n",
+    ")\n",
+    "val_loader = torch.utils.data.DataLoader(\n",
+    "    train_dataset, batch_size=batch_size,\n",
+    "    sampler=SubsetRandomSampler(subset_indices_valid)\n",
+    ")\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.7"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
